@@ -1,0 +1,159 @@
+import cv2
+import time
+from flask import Flask, Response, render_template, jsonify, request
+import threading
+from queue import Queue
+import pygame
+import numpy as np
+
+app = Flask(__name__)
+
+# Initialize pygame mixer and load beep sound.
+pygame.mixer.init()
+beep_sound = pygame.mixer.Sound("beep.wav")  # Ensure beep.wav is in the project root
+
+# Load Haar cascades for face and eye detection.
+face_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+eye_cascade = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_eye.xml')
+
+# Global variables for video streaming and processing.
+video_capture = None
+running = False
+frame_queue = Queue(maxsize=2)
+processed_frame = None
+lock = threading.Lock()
+
+# Session control variables.
+session_state = "idle"  # States: idle, waiting, running, reset
+eyes_closed_frames = 0
+timer_duration = 0
+start_time = 0
+state_lock = threading.Lock()
+
+# Constants
+EYES_CLOSED_THRESHOLD = 10  # Consecutive frames needed before starting the session
+RESET_COOLDOWN = 5  # Seconds to wait after a session reset
+
+def optimized_detection(frame):
+    global eyes_closed_frames, session_state, start_time
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    faces = face_cascade.detectMultiScale(gray, 1.3, 5)
+    
+    eyes_detected = False
+    for (x, y, w, h) in faces:
+        roi_gray = gray[y:y+h, x:x+w]
+        eyes = eye_cascade.detectMultiScale(roi_gray, 1.3, 5)
+        if len(eyes) > 0:
+            eyes_detected = True
+            for (ex, ey, ew, eh) in eyes:
+                cv2.rectangle(frame, (x+ex, y+ey), (x+ex+ew, y+ey+eh), (0, 255, 0), 2)
+    
+    with state_lock:
+        if session_state == "waiting":
+            if not eyes_detected:
+                eyes_closed_frames += 1
+                if eyes_closed_frames >= EYES_CLOSED_THRESHOLD:
+                    session_state = "running"
+                    start_time = time.time()
+            else:
+                eyes_closed_frames = 0
+        elif session_state == "running":
+            if eyes_detected:
+                session_state = "reset"
+                beep_sound.play()
+    
+    return frame
+
+def camera_thread():
+    global video_capture, running
+    while True:
+        try:
+            if running:
+                if video_capture is None or not video_capture.isOpened():
+                    video_capture = cv2.VideoCapture(0)                               #Camera settings
+                    video_capture.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+                    video_capture.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                
+                ret, frame = video_capture.read()
+                if ret and frame_queue.qsize() < 2:
+                    frame_queue.put(frame)
+            else:
+                if video_capture and video_capture.isOpened():
+                    video_capture.release()
+                    video_capture = None
+                time.sleep(0.1)
+        except Exception as e:
+            print(f"Camera error: {str(e)}")
+            time.sleep(1)
+
+def processing_thread():
+    global processed_frame
+    while True:
+        if not frame_queue.empty():
+            frame = frame_queue.get()
+            processed = optimized_detection(frame)
+            
+            _, jpeg = cv2.imencode('.jpg', processed, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            with lock:
+                processed_frame = jpeg.tobytes()
+        else:
+            time.sleep(0.001)
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/video_feed')
+def video_feed():
+    def generate():
+        last_time = time.time()
+        while True:
+            with lock:
+                if processed_frame:
+                    yield (b'--frame\r\n'
+                           b'Content-Type: image/jpeg\r\n\r\n' + processed_frame + b'\r\n')
+                    elapsed = time.time() - last_time
+                    sleep_time = max(0, (1/30) - elapsed)
+                    time.sleep(sleep_time)
+                    last_time = time.time()
+    return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
+
+@app.route('/start_session', methods=['POST'])
+def start_session():
+    global running, session_state, timer_duration, eyes_closed_frames
+    try:
+        minutes = int(request.json['minutes'])
+        timer_duration = minutes * 60
+        with state_lock:
+            session_state = "waiting"
+            eyes_closed_frames = 0
+        running = True
+        return jsonify({"status": "waiting"})
+    except Exception as e:
+        return jsonify({"error": "Invalid input", "message": str(e)}), 400
+
+@app.route('/get_status')
+def get_status():
+    global session_state, start_time, timer_duration, running
+    with state_lock:
+        if session_state == "running":
+            elapsed = time.time() - start_time
+            remaining = max(timer_duration - elapsed, 0)
+            return jsonify({
+                "state": "running",
+                "remaining": remaining
+            })
+        elif session_state == "reset":
+            session_state = "idle"
+            running = False
+            return jsonify({
+                "state": "reset",
+                "cooldown": RESET_COOLDOWN
+            })
+        else:
+            return jsonify({"state": session_state})
+
+if __name__ == '__main__':
+    threading.Thread(target=camera_thread, daemon=True).start()
+    threading.Thread(target=processing_thread, daemon=True).start()
+    app.run(host='0.0.0.0', port=5000, threaded=True)
