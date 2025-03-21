@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Let's Meditate</title>
+    <style>
+    body 
+    {
+    margin: 0px;
+    font-family: Arial, sans-serif;
+    text-align: center;
+    padding: 20px;
+    background-image: linear-gradient(#FA4032,#FFDE4D)
+    }
+
+    #timer 
+    {
+    font-size: 3em;
+    margin-bottom: 20px;
+    }
+
+    input
+    {
+    font-size: 1.2em;
+    padding: 10px 20px;
+    margin: 10px;
+    border-radius: 25px;
+    }
+
+    button {
+    font-size: 1.2em;
+    padding: 10px 20px;
+    margin: 10px;
+    border-radius: 25px;
+    background-image: linear-gradient(#CB3D1E ,#EFCE41)
+    }
+
+    #video-container {
+    margin-top: 20px;
+    }
+
+    img {
+    width: 640px;
+    height: 480px;
+    border: 2px solid black;
+    }
+    </style>
+</head>
+
+<body>
+    <h1>Let's Meditate</h1>
+
+    <div id="video-container">
+        <img id="video-feed" src="/video_feed" alt="Camera Feed">
+    </div>
+    
+    <input type="number" id="timeInput" placeholder="Enter time in minutes" min="1" required>
+    <div id="timer">00:00</div>
+    
+    <button onclick="startSession()">Start</button>
+    <button onclick="resetSession()">Reset</button>
+    
+   
+   <script>
+let countdown;
+let timeLeft;
+let isRunning = false;
+
+function startSession() {
+    const inputTime = document.getElementById("timeInput").value;
+    if (!inputTime || inputTime < 1) {
+        alert("Please enter a valid time in minutes.");
+        return;
+    }
+
+    timeLeft = inputTime * 60; // Convert minutes to seconds
+    if (isRunning) return; 
+    
+    isRunning = true;
+    fetch('/start'); // Start the camera on the server
+    startTimer();
+}
+
+function startTimer() {
+    countdown = setInterval(function() {
+        if (timeLeft <= 0) {
+            clearInterval(countdown);
+            alert("Time's up! 🧘‍♀️");
+            playSound();
+            isRunning = false;
+            fetch('/stop'); // Stop the camera
+        } else {
+            timeLeft--;
+            displayTime(timeLeft);
+        }
+    }, 1000);
+}
+
+function resetSession() {
+    clearInterval(countdown);
+    timeLeft = 0;
+    displayTime(timeLeft);
+    isRunning = false;
+    fetch('/stop'); // Stop the camera
+}
+
+function displayTime(seconds) {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    const formattedTime = `${padZero(minutes)}:${padZero(remainingSeconds)}`;
+    document.getElementById("timer").innerText = formattedTime;
+}
+
+function padZero(num) {
+    return num < 10 ? `0${num}` : num;
+}
+
+function playSound() {
+    const audio = new Audio('https://www.soundjay.com/button/beep-07.wav');
+    audio.play();
+}
+   </script>
+</body>
+</html>
