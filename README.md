@@ -40,11 +40,29 @@ git clone https://github.com/yourusername/meditation-app.git
 # Navigate to the project directory
 cd meditation-app
 
+# Check Python version
+python --version  # Ensure Python 3.x is installed
+
+# Create and activate a virtual environment (recommended)
+python -m venv venv
+source venv/bin/activate  # On macOS/Linux
+venv\Scripts\activate     # On Windows
+
 # Install dependencies
 pip install -r requirements.txt
 
 # Run the application
-python app.py
+python app.py  # Modify if using Flask/Django
+```
+
+### Running the Server
+#### For Flask:
+```bash
+flask run
+```
+#### For Django:
+```bash
+python manage.py runserver
 ```
 
 ## 📝 Usage
