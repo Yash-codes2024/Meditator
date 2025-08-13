@@ -1,13 +1,13 @@
 <!-- README.md -->
 
-<h1 align="center">🧘 Meditation App</h1>
+<h1 align="center">🧘 Meditator </h1>
 <p align="center">
   <img src="https://via.placeholder.com/600x300" alt="Meditation App Banner"/>
 </p>
 
 ## 🌿 About the Project
 <p>
-This is a <strong>Meditation App</strong> designed to help users relax, focus, and improve their mindfulness. It features guided sessions, ambient sounds, and customizable timers.
+This is a <strong>Meditation website</strong> designed to help users relax, focus, and improve their mindfulness. It features guided sessions, ambient sounds, and customizable timers.
 </p>
 
 ## 🚀 Features
